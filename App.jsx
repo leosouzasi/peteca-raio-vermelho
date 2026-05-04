@@ -60,6 +60,7 @@ export default function App() {
   const [duplas, setDuplas] = useState([])
   const [sorteando, setSorteando] = useState(false)
   const [historico, setHistorico] = useState([])
+  const [historicoAberto, setHistoricoAberto] = useState(false)
 
   useEffect(() => { carregarTudo() }, [])
   useEffect(() => { if (eventoId) carregarPresencas(eventoId) }, [eventoId])
@@ -432,8 +433,25 @@ export default function App() {
               <h3>Ranking dos mais frequentes</h3>
               {rankingFrequencia.length === 0 ? <p className="muted">Ainda sem ranking.</p> : rankingFrequencia.slice(0, 10).map((r, index) => <div className="admin-row rank-row" key={r.jogador}><span>{index + 1}. {r.jogador}</span><strong>{r.total} presenças</strong></div>)}
 
-              <h3>Histórico de petecas encerradas</h3>
-              {historico.length === 0 ? <p className="muted">Nenhuma peteca encerrada ainda.</p> : historico.map(ev => <div className="admin-row" key={ev.id}><span>{ev.nome}</span><button className="ghost mini" onClick={() => reabrirEvento(ev.id)}>Reabrir</button></div>)}
+              <button className="ghost" onClick={() => setHistoricoAberto(!historicoAberto)}>
+                {historicoAberto ? 'Ocultar petecas encerradas' : '📜 Ver petecas encerradas'}
+              </button>
+
+              {historicoAberto && (
+                <>
+                  <h3>Histórico de petecas encerradas</h3>
+                  {historico.length === 0 ? (
+                    <p className="muted">Nenhuma peteca encerrada ainda.</p>
+                  ) : (
+                    historico.map(ev => (
+                      <div className="admin-row" key={ev.id}>
+                        <span>{ev.nome}</span>
+                        <button className="ghost mini" onClick={() => reabrirEvento(ev.id)}>Reabrir</button>
+                      </div>
+                    ))
+                  )}
+                </>
+              )}
 
               <h3>Pagamentos e lista</h3>
               {presencas.map((p, index) => <div className="admin-row" key={p.id}><span>{index + 1}. {p.jogador} {p.status === 'espera' ? '• espera' : ''}</span><div className="admin-actions">{p.status === 'espera' ? <button className="paid mini" onClick={() => adminPromover(p)}>Promover</button> : <button className="ghost mini" onClick={() => adminMoverParaEspera(p)}>Espera</button>}<button className={p.pix_pago ? 'paid mini' : 'ghost mini'} onClick={() => adminMarcarPago(p)}>{p.pix_pago ? 'Pago' : 'Pendente'}</button></div></div>)}
