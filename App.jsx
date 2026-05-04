@@ -25,6 +25,21 @@ function formatarData(data) {
   }).replace(',', ' -')
 }
 
+function calcularTempoRestante(dataEvento, agoraBase = new Date()) {
+  if (!dataEvento) return ''
+  const evento = new Date(dataEvento)
+  const diff = evento - agoraBase
+
+  if (diff <= 0) return 'Já começou 🔥'
+
+  const dias = Math.floor(diff / (1000 * 60 * 60 * 24))
+  const horas = Math.floor((diff / (1000 * 60 * 60)) % 24)
+  const minutos = Math.floor((diff / (1000 * 60)) % 60)
+
+  if (dias > 0) return `Faltam ${dias}d ${horas}h ${minutos}min`
+  return `Faltam ${horas}h ${minutos}min 🔥`
+}
+
 function inicial(nome) {
   return nome ? nome.trim()[0].toUpperCase() : '?'
 }
@@ -61,11 +76,63 @@ export default function App() {
   const [sorteando, setSorteando] = useState(false)
   const [historico, setHistorico] = useState([])
   const [historicoAberto, setHistoricoAberto] = useState(false)
+  const [agora, setAgora] = useState(new Date())
   const [sexoAberto, setSexoAberto] = useState(false)
 
   useEffect(() => { carregarTudo() }, [])
   useEffect(() => { if (eventoId) carregarPresencas(eventoId) }, [eventoId])
   useEffect(() => { if (adminLogado) carregarRankingFrequencia() }, [adminLogado])
+
+  useEffect(() => {
+    const intervalo = setInterval(() => setAgora(new Date()), 60000)
+    return () => clearInterval(intervalo)
+  }, [])
+
+  useEffect(() => {
+    const pedirPermissao = () => {
+      if ('Notification' in window && Notification.permission === 'default') {
+        Notification.requestPermission().catch(() => {})
+      }
+      window.removeEventListener('click', pedirPermissao)
+      window.removeEventListener('touchstart', pedirPermissao)
+    }
+
+    window.addEventListener('click', pedirPermissao)
+    window.addEventListener('touchstart', pedirPermissao)
+
+    return () => {
+      window.removeEventListener('click', pedirPermissao)
+      window.removeEventListener('touchstart', pedirPermissao)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!eventoSelecionado?.data_evento) return
+
+    const evento = new Date(eventoSelecionado.data_evento)
+    const diffMin = Math.round((evento - agora) / 60000)
+
+    const disparos = [
+      { minuto: 60, texto: 'Falta 1 hora para a Peteca Raio Vermelho ⚡' },
+      { minuto: 30, texto: 'Faltam 30 minutos para a peteca. Faz o pix caloteiro 😎' }
+    ]
+
+    disparos.forEach(item => {
+      if (diffMin <= item.minuto && diffMin > item.minuto - 2) {
+        const chave = `notificacao_${eventoSelecionado.id}_${item.minuto}`
+        if (localStorage.getItem(chave)) return
+
+        localStorage.setItem(chave, 'sim')
+        aviso(item.texto)
+
+        if ('Notification' in window && Notification.permission === 'granted') {
+          new Notification('Peteca Raio Vermelho', {
+            body: item.texto
+          })
+        }
+      }
+    })
+  }, [agora, eventoSelecionado])
 
   async function carregarTudo() {
     await carregarJogadores()
@@ -367,7 +434,11 @@ export default function App() {
           )}
           {eventoSelecionado && (
             <div className="event-box">
-              <div><strong>{eventoSelecionado.nome}</strong><span>{formatarData(eventoSelecionado.data_evento)}</span></div>
+              <div>
+                <strong>{eventoSelecionado.nome}</strong>
+                <span>{formatarData(eventoSelecionado.data_evento)}</span>
+                <div className="contador">{calcularTempoRestante(eventoSelecionado.data_evento, agora)}</div>
+              </div>
               <div className="vagas"><strong>{vagasUsadas}/{limiteVagas}</strong><span>{vagasRestantes > 0 ? `faltam ${vagasRestantes} vagas` : `lista cheia • ${espera.length} na espera`}</span></div>
             </div>
           )}
