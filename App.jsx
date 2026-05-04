@@ -33,11 +33,16 @@ function normalizarNome(nome) {
   return String(nome || '').trim().replace(/\s+/g, ' ')
 }
 
+function embaralhar(lista) {
+  return [...lista].sort(() => Math.random() - 0.5)
+}
+
 export default function App() {
   const [eventos, setEventos] = useState([])
   const [eventoId, setEventoId] = useState('')
   const [presencas, setPresencas] = useState([])
-  const [jogadores, setJogadores] = useState(jogadoresPadrao)
+  const [jogadores, setJogadores] = useState([])
+  const [rankingFrequencia, setRankingFrequencia] = useState([])
   const [nome, setNome] = useState(localStorage.getItem('peteca_nome') || '')
   const [nomeManual, setNomeManual] = useState('')
   const [modoOutroNome, setModoOutroNome] = useState(false)
@@ -58,11 +63,13 @@ export default function App() {
 
   useEffect(() => { carregarTudo() }, [])
   useEffect(() => { if (eventoId) carregarPresencas(eventoId) }, [eventoId])
+  useEffect(() => { if (adminLogado) carregarRankingFrequencia() }, [adminLogado])
 
   async function carregarTudo() {
     await carregarJogadores()
     await carregarEventosAbertos()
     await carregarHistorico()
+    await carregarRankingFrequencia()
   }
 
   async function carregarEventosAbertos() {
@@ -77,21 +84,36 @@ export default function App() {
     setHistorico(data || [])
   }
 
+  async function carregarRankingFrequencia() {
+    const { data } = await supabase.from('presencas').select('jogador,status')
+    const mapa = {}
+    ;(data || []).forEach(p => {
+      if (!p.jogador) return
+      if (p.status === 'espera') return
+      mapa[p.jogador] = (mapa[p.jogador] || 0) + 1
+    })
+    const ranking = Object.entries(mapa)
+      .map(([jogador, total]) => ({ jogador, total }))
+      .sort((a,b) => b.total - a.total || a.jogador.localeCompare(b.jogador))
+    setRankingFrequencia(ranking)
+  }
+
   async function carregarJogadores() {
-    const { data, error } = await supabase.from('jogadores').select('nome').order('nome', { ascending: true })
+    const { data, error } = await supabase.from('jogadores').select('id,nome,sexo').order('nome', { ascending: true })
     if (error || !data || data.length === 0) {
-      setJogadores(jogadoresPadrao)
+      setJogadores(jogadoresPadrao.map(nome => ({ nome, sexo: '' })))
       return
     }
     const nomesBanco = data.map(j => j.nome).filter(Boolean)
-    const todos = Array.from(new Set([...nomesBanco, ...jogadoresPadrao])).sort((a,b) => a.localeCompare(b))
+    const faltantes = jogadoresPadrao.filter(p => !nomesBanco.some(n => n.toLowerCase() === p.toLowerCase())).map(nome => ({ nome, sexo: '' }))
+    const todos = [...data, ...faltantes].sort((a,b) => a.nome.localeCompare(b.nome))
     setJogadores(todos)
   }
 
   async function salvarJogadorSeNovo(nomeJogador) {
     const limpo = normalizarNome(nomeJogador)
     if (!limpo) return
-    const existeLocal = jogadores.some(j => j.toLowerCase() === limpo.toLowerCase())
+    const existeLocal = jogadores.some(j => j.nome.toLowerCase() === limpo.toLowerCase())
     if (existeLocal) return
     await supabase.from('jogadores').insert([{ nome: limpo }])
     await carregarJogadores()
@@ -111,6 +133,10 @@ export default function App() {
   const eventoSelecionado = useMemo(() => eventos.find(e => e.id === eventoId), [eventos, eventoId])
   const nomeAtual = normalizarNome(modoOutroNome ? nomeManual : nome)
   const minhaPresenca = useMemo(() => presencas.find(p => p.jogador?.toLowerCase() === nomeAtual?.toLowerCase()), [presencas, nomeAtual])
+  const duplasPublicas = useMemo(() => {
+    if (!eventoSelecionado?.duplas) return []
+    return String(eventoSelecionado.duplas).split('\n').filter(Boolean)
+  }, [eventoSelecionado])
 
   const confirmados = presencas.filter(p => p.status !== 'espera')
   const espera = presencas.filter(p => p.status === 'espera')
@@ -119,31 +145,38 @@ export default function App() {
   const vagasRestantes = Math.max(limiteVagas - vagasUsadas, 0)
   const eventoLotado = vagasRestantes <= 0
 
+  function sexoDoJogador(nomeJogador) {
+    const j = jogadores.find(x => x.nome?.toLowerCase() === nomeJogador?.toLowerCase())
+    return j?.sexo || ''
+  }
+
   async function inserirNaLista(nomeFinal, origemAdmin = false) {
     const limpo = normalizarNome(nomeFinal)
     if (!eventoId) return aviso('Escolha uma peteca primeiro.')
     if (!limpo) return aviso('Escolha ou digite um nome.')
 
     const jaConfirmado = presencas.find(p => p.jogador?.toLowerCase() === limpo.toLowerCase())
-    if (jaConfirmado) return aviso('Esse nome já está nessa peteca.')
+    if (jaConfirmado) {
+      if (!origemAdmin) {
+        setNome(limpo)
+        localStorage.setItem('peteca_nome', limpo)
+        setPixAberto(true)
+        copiarPix(false)
+        return aviso('Você já está na lista. Faz o pix caloteiro 😎')
+      }
+      return aviso('Esse nome já está nessa peteca.')
+    }
 
     const status = eventoLotado ? 'espera' : 'confirmado'
-
     setCarregando(true)
     await salvarJogadorSeNovo(limpo)
 
-    const { error } = await supabase.from('presencas').insert([{
-      jogador: limpo,
-      evento_id: eventoId,
-      pix_pago: false,
-      status
-    }])
-
+    const { error } = await supabase.from('presencas').insert([{ jogador: limpo, evento_id: eventoId, pix_pago: false, status }])
     setCarregando(false)
 
     if (error) return aviso('Não consegui colocar o nome na lista.')
-
     await carregarPresencas(eventoId)
+    await carregarRankingFrequencia()
 
     if (origemAdmin) {
       setAdminNome('')
@@ -158,9 +191,7 @@ export default function App() {
     }
   }
 
-  async function confirmarPresenca() {
-    await inserirNaLista(nomeAtual, false)
-  }
+  async function confirmarPresenca() { await inserirNaLista(nomeAtual, false) }
 
   async function retirarNome() {
     if (!minhaPresenca) return aviso('Seu nome ainda não está na lista.')
@@ -169,6 +200,7 @@ export default function App() {
     setCarregando(false)
     if (error) return aviso('Não consegui retirar seu nome.')
     await carregarPresencas(eventoId)
+    await carregarRankingFrequencia()
     await promoverPrimeiroDaEspera()
     aviso('Nome retirado da lista.')
   }
@@ -182,6 +214,7 @@ export default function App() {
     if (confirmadosAgora.length < limite && esperaAgora.length > 0) {
       await supabase.from('presencas').update({ status: 'confirmado' }).eq('id', esperaAgora[0].id)
       await carregarPresencas(eventoId)
+      await carregarRankingFrequencia()
       aviso(`${esperaAgora[0].jogador} saiu da espera e entrou na lista.`)
     }
   }
@@ -190,11 +223,13 @@ export default function App() {
     if (vagasRestantes <= 0) return aviso('Não tem vaga livre.')
     await supabase.from('presencas').update({ status: 'confirmado' }).eq('id', p.id)
     await carregarPresencas(eventoId)
+    await carregarRankingFrequencia()
   }
 
   async function adminMoverParaEspera(p) {
     await supabase.from('presencas').update({ status: 'espera' }).eq('id', p.id)
     await carregarPresencas(eventoId)
+    await carregarRankingFrequencia()
   }
 
   async function marcarPixPago() {
@@ -235,12 +270,7 @@ export default function App() {
     if (!novaData) return aviso('Escolha data e hora.')
     const dataEvento = new Date(novaData)
     const nomeEvento = 'Peteca ' + formatarData(dataEvento)
-    const { error } = await supabase.from('eventos').insert([{
-      nome: nomeEvento,
-      data_evento: dataEvento.toISOString(),
-      aberto: true,
-      limite_vagas: Number(novoLimite || 12)
-    }])
+    const { error } = await supabase.from('eventos').insert([{ nome: nomeEvento, data_evento: dataEvento.toISOString(), aberto: true, limite_vagas: Number(novoLimite || 12), duplas: '' }])
     if (error) return aviso('Não consegui criar o evento.')
     setNovaData('')
     setNovoLimite(12)
@@ -261,10 +291,7 @@ export default function App() {
   async function fecharEvento(id) {
     const { error } = await supabase.from('eventos').update({ aberto: false }).eq('id', id)
     if (error) return aviso('Não consegui fechar o evento.')
-    if (eventoId === id) {
-      setEventoId('')
-      setPresencas([])
-    }
+    if (eventoId === id) { setEventoId(''); setPresencas([]) }
     await carregarTudo()
     aviso('Peteca encerrada e enviada para o histórico.')
   }
@@ -281,31 +308,52 @@ export default function App() {
     await carregarPresencas(eventoId)
   }
 
-  function sortearDuplasAnimado() {
-    const nomes = confirmados.map(p => p.jogador)
-    if (nomes.length < 2) return aviso('Precisa de pelo menos 2 confirmados.')
+  async function atualizarSexo(jogador, sexo) {
+    await supabase.from('jogadores').update({ sexo }).eq('nome', jogador.nome)
+    await carregarJogadores()
+  }
+
+  async function sortearDuplasAnimado() {
+    const nomesConfirmados = confirmados.map(p => p.jogador)
+    if (nomesConfirmados.length < 2) return aviso('Precisa de pelo menos 2 confirmados.')
+
     setSorteando(true)
     setDuplas([])
-    setTimeout(() => {
-      const embaralhados = [...nomes].sort(() => Math.random() - 0.5)
+
+    setTimeout(async () => {
+      let homens = embaralhar(nomesConfirmados.filter(n => sexoDoJogador(n) !== 'F'))
+      let mulheres = embaralhar(nomesConfirmados.filter(n => sexoDoJogador(n) === 'F'))
       const resultado = []
-      for (let i = 0; i < embaralhados.length; i += 2) {
-        resultado.push(`${embaralhados[i]} + ${embaralhados[i + 1] || 'Reserva'}`)
+
+      while (homens.length > 0 && mulheres.length > 0) {
+        resultado.push(`${mulheres.shift()} + ${homens.shift()}`)
       }
+
+      const restantes = embaralhar([...mulheres, ...homens])
+      while (restantes.length > 0) {
+        resultado.push(`${restantes.shift()} + ${restantes.shift() || 'Reserva'}`)
+      }
+
       setDuplas(resultado)
       setSorteando(false)
+
+      await supabase.from('eventos').update({ duplas: resultado.join('\n') }).eq('id', eventoId)
+      await carregarEventosAbertos()
+      aviso('Sorteio publicado para a galera ⚡')
     }, 1800)
+  }
+
+  async function limparSorteio() {
+    await supabase.from('eventos').update({ duplas: '' }).eq('id', eventoId)
+    setDuplas([])
+    await carregarEventosAbertos()
+    aviso('Sorteio limpo.')
   }
 
   return (
     <div className="app">
       <div className="container">
-        <header className="hero">
-          <div className="raio">⚡</div>
-          <h1>Peteca Raio Vermelho</h1>
-          <p>Quem vai apanhar na peteca hoje?</p>
-        </header>
-
+        <header className="hero"><div className="raio">⚡</div><h1>Peteca Raio Vermelho</h1><p>Quem vai apanhar na peteca hoje?</p></header>
         {mensagem && <div className="toast">{mensagem}</div>}
 
         <section className="card">
@@ -315,7 +363,6 @@ export default function App() {
               {eventos.map(ev => <option key={ev.id} value={ev.id}>{ev.nome || 'Peteca ' + formatarData(ev.data_evento)}</option>)}
             </select>
           )}
-
           {eventoSelecionado && (
             <div className="event-box">
               <div><strong>{eventoSelecionado.nome}</strong><span>{formatarData(eventoSelecionado.data_evento)}</span></div>
@@ -327,10 +374,7 @@ export default function App() {
         <section className="card">
           <h2>👤 Seu nome</h2>
           {nome && !modoOutroNome ? (
-            <div className="profile">
-              <div className="avatar">{inicial(nome)}</div>
-              <div><strong>Olá, {nome}</strong><button className="link" onClick={() => { localStorage.removeItem('peteca_nome'); setNome(''); setNomeManual(''); setModoOutroNome(false) }}>trocar nome</button></div>
-            </div>
+            <div className="profile"><div className="avatar">{inicial(nome)}</div><div><strong>Olá, {nome}</strong><button className="link" onClick={() => { localStorage.removeItem('peteca_nome'); setNome(''); setNomeManual(''); setModoOutroNome(false) }}>trocar nome</button></div></div>
           ) : (
             <div className="name-box">
               <select value={modoOutroNome ? '__outro__' : nome} onChange={e => {
@@ -338,101 +382,65 @@ export default function App() {
                 else { setModoOutroNome(false); setNome(e.target.value); setNomeManual(''); if (e.target.value) localStorage.setItem('peteca_nome', e.target.value) }
               }}>
                 <option value="">Escolha seu nome</option>
-                {jogadores.map(j => <option key={j} value={j}>{j}</option>)}
+                {jogadores.map(j => <option key={j.nome} value={j.nome}>{j.nome}</option>)}
                 <option value="__outro__">Não estou na lista</option>
               </select>
               {modoOutroNome && <input className="manual-name" placeholder="Digite seu nome" value={nomeManual} onChange={e => setNomeManual(e.target.value)} />}
             </div>
           )}
-
-          <div className="actions">
-            <button className="primary" disabled={carregando || !eventoId || (!nome && !nomeManual)} onClick={confirmarPresenca}>✅ Confirmar presença</button>
-            <button className="danger" disabled={carregando || !minhaPresenca} onClick={retirarNome}>❌ Retirar meu nome</button>
-          </div>
+          <div className="actions"><button className="primary" disabled={carregando || !eventoId || (!nome && !nomeManual)} onClick={confirmarPresenca}>✅ Confirmar presença / Pix</button><button className="danger" disabled={carregando || !minhaPresenca} onClick={retirarNome}>❌ Retirar meu nome</button></div>
         </section>
 
         {pixAberto && (
-          <section className="card pix">
-            <h2>💸 Faz o pix caloteiro</h2>
-            <div className="pix-key">{PIX}</div>
-            <button className="primary" onClick={() => copiarPix(true)}>📋 Copiar chave Pix</button>
-            <button className="paid" onClick={marcarPixPago}>✅ Já paguei</button>
-            <button className="ghost" onClick={() => setPixAberto(false)}>⏳ Ainda não</button>
-          </section>
+          <section className="card pix"><h2>💸 Faz o pix caloteiro</h2><div className="pix-key">{PIX}</div><button className="primary" onClick={() => copiarPix(true)}>📋 Copiar chave Pix</button><button className="paid" onClick={marcarPixPago}>✅ Já paguei</button><button className="ghost" onClick={() => setPixAberto(false)}>⏳ Ainda não</button></section>
         )}
 
         <section className="card">
           <h2>🔥 Confirmados</h2>
           {confirmados.length === 0 ? <p className="muted">Ninguém confirmou ainda. Tá todo mundo correndo?</p> : (
-            <div className="players">{confirmados.map((p, index) => (
-              <div className="player" key={p.id}><div className="numero">{index + 1}</div><div className="avatar small">{inicial(p.jogador)}</div><span>{p.jogador}</span></div>
-            ))}</div>
+            <div className="players">{confirmados.map((p, index) => <div className="player" key={p.id}><div className="numero">{index + 1}</div><div className="avatar small">{inicial(p.jogador)}</div><span>{p.jogador}</span><span className={p.pix_pago ? 'status pago' : 'status pendente'}>{p.pix_pago ? 'Pago' : 'Pendente'}</span></div>)}</div>
           )}
         </section>
 
         {espera.length > 0 && (
-          <section className="card wait">
-            <h2>⏳ Lista de espera</h2>
-            <div className="players">{espera.map((p, index) => (
-              <div className="player wait-player" key={p.id}><div className="numero">{index + 1}</div><div className="avatar small">{inicial(p.jogador)}</div><span>{p.jogador}</span></div>
-            ))}</div>
-          </section>
+          <section className="card wait"><h2>⏳ Lista de espera</h2><div className="players">{espera.map((p, index) => <div className="player wait-player" key={p.id}><div className="numero">{index + 1}</div><div className="avatar small">{inicial(p.jogador)}</div><span>{p.jogador}</span><span className="status espera">Espera</span></div>)}</div></section>
+        )}
+
+        {duplasPublicas.length > 0 && (
+          <section className="card sorteio-publico"><h2>🎲 Duplas sorteadas</h2>{duplasPublicas.map((d, i) => <div className="dupla" key={i}>{i + 1}. {d}</div>)}</section>
         )}
 
         <section className="card">
           <button className="admin-toggle" onClick={() => setAdminAberto(!adminAberto)}>👑 Área Admin</button>
-
-          {adminAberto && !adminLogado && (
-            <div className="admin-login">
-              <input placeholder="usuário" value={usuarioAdmin} onChange={e => setUsuarioAdmin(e.target.value)} />
-              <input placeholder="senha" type="password" value={senhaAdmin} onChange={e => setSenhaAdmin(e.target.value)} />
-              <button className="primary" onClick={loginAdmin}>Entrar</button>
-            </div>
-          )}
-
+          {adminAberto && !adminLogado && <div className="admin-login"><input placeholder="usuário" value={usuarioAdmin} onChange={e => setUsuarioAdmin(e.target.value)} /><input placeholder="senha" type="password" value={senhaAdmin} onChange={e => setSenhaAdmin(e.target.value)} /><button className="primary" onClick={loginAdmin}>Entrar</button></div>}
           {adminAberto && adminLogado && (
             <div className="admin-panel">
               <button className="ghost" onClick={sairAdmin}>Sair do admin</button>
-
-              <h3>Criar nova Peteca</h3>
-              <input type="datetime-local" value={novaData} onChange={e => setNovaData(e.target.value)} />
-              <input type="number" min="2" placeholder="Número de vagas" value={novoLimite} onChange={e => setNovoLimite(e.target.value)} />
-              <button className="primary" onClick={criarEvento}>Criar peteca</button>
+              <h3>Criar nova Peteca</h3><input type="datetime-local" value={novaData} onChange={e => setNovaData(e.target.value)} /><input type="number" min="2" placeholder="Número de vagas" value={novoLimite} onChange={e => setNovoLimite(e.target.value)} /><button className="primary" onClick={criarEvento}>Criar peteca</button>
 
               <h3>Adicionar jogador na lista</h3>
-              <select value={adminNome} onChange={e => setAdminNome(e.target.value)}>
-                <option value="">Escolha um jogador</option>
-                {jogadores.map(j => <option key={j} value={j}>{j}</option>)}
-              </select>
+              <select value={adminNome} onChange={e => setAdminNome(e.target.value)}><option value="">Escolha um jogador</option>{jogadores.map(j => <option key={j.nome} value={j.nome}>{j.nome}</option>)}</select>
               <input placeholder="Ou digite novo nome" value={adminNomeManual} onChange={e => setAdminNomeManual(e.target.value)} />
               <button className="primary" onClick={() => inserirNaLista(adminNomeManual || adminNome, true)}>Adicionar jogador</button>
 
+              <h3>Definir sexo para sorteio misto</h3>
+              {jogadores.map(j => <div className="admin-row" key={j.nome}><span>{j.nome}</span><select className="sexo-select" value={j.sexo || ''} onChange={e => atualizarSexo(j, e.target.value)}><option value="">Masculino/padrão</option><option value="F">Feminino</option></select></div>)}
+
               <h3>Eventos abertos</h3>
-              {eventos.map(ev => (
-                <div className="admin-row" key={ev.id}>
-                  <span>{ev.nome} • {ev.limite_vagas || 12} vagas</span>
-                  <div className="admin-actions"><button className="ghost mini" onClick={() => atualizarLimiteEvento(ev.id, ev.limite_vagas)}>Vagas</button><button className="danger mini" onClick={() => fecharEvento(ev.id)}>Fechar</button></div>
-                </div>
-              ))}
+              {eventos.map(ev => <div className="admin-row" key={ev.id}><span>{ev.nome} • {ev.limite_vagas || 12} vagas</span><div className="admin-actions"><button className="ghost mini" onClick={() => atualizarLimiteEvento(ev.id, ev.limite_vagas)}>Vagas</button><button className="danger mini" onClick={() => fecharEvento(ev.id)}>Fechar</button></div></div>)}
+
+              <h3>Ranking dos mais frequentes</h3>
+              {rankingFrequencia.length === 0 ? <p className="muted">Ainda sem ranking.</p> : rankingFrequencia.slice(0, 10).map((r, index) => <div className="admin-row rank-row" key={r.jogador}><span>{index + 1}. {r.jogador}</span><strong>{r.total} presenças</strong></div>)}
 
               <h3>Histórico de petecas encerradas</h3>
-              {historico.length === 0 ? <p className="muted">Nenhuma peteca encerrada ainda.</p> : historico.map(ev => (
-                <div className="admin-row" key={ev.id}><span>{ev.nome}</span><button className="ghost mini" onClick={() => reabrirEvento(ev.id)}>Reabrir</button></div>
-              ))}
+              {historico.length === 0 ? <p className="muted">Nenhuma peteca encerrada ainda.</p> : historico.map(ev => <div className="admin-row" key={ev.id}><span>{ev.nome}</span><button className="ghost mini" onClick={() => reabrirEvento(ev.id)}>Reabrir</button></div>)}
 
               <h3>Pagamentos e lista</h3>
-              {presencas.map((p, index) => (
-                <div className="admin-row" key={p.id}>
-                  <span>{index + 1}. {p.jogador} {p.status === 'espera' ? '• espera' : ''}</span>
-                  <div className="admin-actions">
-                    {p.status === 'espera' ? <button className="paid mini" onClick={() => adminPromover(p)}>Promover</button> : <button className="ghost mini" onClick={() => adminMoverParaEspera(p)}>Espera</button>}
-                    <button className={p.pix_pago ? 'paid mini' : 'ghost mini'} onClick={() => adminMarcarPago(p)}>{p.pix_pago ? 'Pago' : 'Pendente'}</button>
-                  </div>
-                </div>
-              ))}
+              {presencas.map((p, index) => <div className="admin-row" key={p.id}><span>{index + 1}. {p.jogador} {p.status === 'espera' ? '• espera' : ''}</span><div className="admin-actions">{p.status === 'espera' ? <button className="paid mini" onClick={() => adminPromover(p)}>Promover</button> : <button className="ghost mini" onClick={() => adminMoverParaEspera(p)}>Espera</button>}<button className={p.pix_pago ? 'paid mini' : 'ghost mini'} onClick={() => adminMarcarPago(p)}>{p.pix_pago ? 'Pago' : 'Pendente'}</button></div></div>)}
 
-              <h3>Sorteio</h3>
-              <button className="primary" onClick={sortearDuplasAnimado}>🎲 Sortear duplas</button>
+              <h3>Sorteio misto</h3>
+              <button className="primary" onClick={sortearDuplasAnimado}>🎲 Sortear e publicar duplas</button>
+              <button className="ghost" onClick={limparSorteio}>Limpar sorteio público</button>
               {sorteando && <div className="shuffle">Embaralhando os brabos... ⚡</div>}
               {duplas.map((d, i) => <div className="dupla" key={i}>{i + 1}. {d}</div>)}
             </div>
