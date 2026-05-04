@@ -61,6 +61,7 @@ export default function App() {
   const [sorteando, setSorteando] = useState(false)
   const [historico, setHistorico] = useState([])
   const [historicoAberto, setHistoricoAberto] = useState(false)
+  const [sexoAberto, setSexoAberto] = useState(false)
 
   useEffect(() => { carregarTudo() }, [])
   useEffect(() => { if (eventoId) carregarPresencas(eventoId) }, [eventoId])
@@ -424,8 +425,24 @@ export default function App() {
               <input placeholder="Ou digite novo nome" value={adminNomeManual} onChange={e => setAdminNomeManual(e.target.value)} />
               <button className="primary" onClick={() => inserirNaLista(adminNomeManual || adminNome, true)}>Adicionar jogador</button>
 
-              <h3>Definir sexo para sorteio misto</h3>
-              {jogadores.map(j => <div className="admin-row" key={j.nome}><span>{j.nome}</span><select className="sexo-select" value={j.sexo || 'M'} onChange={e => atualizarSexo(j, e.target.value)}><option value="M">Masculino</option><option value="F">Feminino</option></select></div>)}
+              <button className="ghost" onClick={() => setSexoAberto(!sexoAberto)}>
+                {sexoAberto ? 'Ocultar sexo dos jogadores' : '👥 Definir sexo dos jogadores'}
+              </button>
+
+              {sexoAberto && (
+                <>
+                  <h3>Definir sexo para sorteio misto</h3>
+                  {jogadores.map(j => (
+                    <div className="admin-row" key={j.nome}>
+                      <span>{j.nome}</span>
+                      <select className="sexo-select" value={j.sexo || 'M'} onChange={e => atualizarSexo(j, e.target.value)}>
+                        <option value="M">Masculino</option>
+                        <option value="F">Feminino</option>
+                      </select>
+                    </div>
+                  ))}
+                </>
+              )}
 
               <h3>Eventos abertos</h3>
               {eventos.map(ev => <div className="admin-row" key={ev.id}><span>{ev.nome} • {ev.limite_vagas || 12} vagas</span><div className="admin-actions"><button className="ghost mini" onClick={() => atualizarLimiteEvento(ev.id, ev.limite_vagas)}>Vagas</button><button className="danger mini" onClick={() => fecharEvento(ev.id)}>Fechar</button></div></div>)}
