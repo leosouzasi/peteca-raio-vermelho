@@ -3,11 +3,3 @@
 .status.confirmado{background:#1a3a1a;color:#7CFC00;border:1px solid #2ecc71}
 .text-confirmado{color:#7CFC00}
 .text-espera{color:#ffe7a0}
-
-.contador{
-  margin-top:6px;
-  font-weight:900;
-  color:#ff4d4d;
-  font-size:14px;
-  text-shadow:0 0 10px rgba(255,0,0,.35);
-}
