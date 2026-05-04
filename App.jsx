@@ -101,11 +101,11 @@ export default function App() {
   async function carregarJogadores() {
     const { data, error } = await supabase.from('jogadores').select('id,nome,sexo').order('nome', { ascending: true })
     if (error || !data || data.length === 0) {
-      setJogadores(jogadoresPadrao.map(nome => ({ nome, sexo: '' })))
+      setJogadores(jogadoresPadrao.map(nome => ({ nome, sexo: 'M' })))
       return
     }
     const nomesBanco = data.map(j => j.nome).filter(Boolean)
-    const faltantes = jogadoresPadrao.filter(p => !nomesBanco.some(n => n.toLowerCase() === p.toLowerCase())).map(nome => ({ nome, sexo: '' }))
+    const faltantes = jogadoresPadrao.filter(p => !nomesBanco.some(n => n.toLowerCase() === p.toLowerCase())).map(nome => ({ nome, sexo: 'M' }))
     const todos = [...data, ...faltantes].sort((a,b) => a.nome.localeCompare(b.nome))
     setJogadores(todos)
   }
@@ -115,7 +115,7 @@ export default function App() {
     if (!limpo) return
     const existeLocal = jogadores.some(j => j.nome.toLowerCase() === limpo.toLowerCase())
     if (existeLocal) return
-    await supabase.from('jogadores').insert([{ nome: limpo }])
+    await supabase.from('jogadores').insert([{ nome: limpo, sexo: 'M' }])
     await carregarJogadores()
   }
 
@@ -147,7 +147,7 @@ export default function App() {
 
   function sexoDoJogador(nomeJogador) {
     const j = jogadores.find(x => x.nome?.toLowerCase() === nomeJogador?.toLowerCase())
-    return j?.sexo || ''
+    return j?.sexo || 'M'
   }
 
   async function inserirNaLista(nomeFinal, origemAdmin = false) {
@@ -321,7 +321,7 @@ export default function App() {
     setDuplas([])
 
     setTimeout(async () => {
-      let homens = embaralhar(nomesConfirmados.filter(n => sexoDoJogador(n) !== 'F'))
+      let homens = embaralhar(nomesConfirmados.filter(n => sexoDoJogador(n) === 'M'))
       let mulheres = embaralhar(nomesConfirmados.filter(n => sexoDoJogador(n) === 'F'))
       const resultado = []
 
@@ -424,7 +424,7 @@ export default function App() {
               <button className="primary" onClick={() => inserirNaLista(adminNomeManual || adminNome, true)}>Adicionar jogador</button>
 
               <h3>Definir sexo para sorteio misto</h3>
-              {jogadores.map(j => <div className="admin-row" key={j.nome}><span>{j.nome}</span><select className="sexo-select" value={j.sexo || ''} onChange={e => atualizarSexo(j, e.target.value)}><option value="">Masculino/padrão</option><option value="F">Feminino</option></select></div>)}
+              {jogadores.map(j => <div className="admin-row" key={j.nome}><span>{j.nome}</span><select className="sexo-select" value={j.sexo || 'M'} onChange={e => atualizarSexo(j, e.target.value)}><option value="M">Masculino</option><option value="F">Feminino</option></select></div>)}
 
               <h3>Eventos abertos</h3>
               {eventos.map(ev => <div className="admin-row" key={ev.id}><span>{ev.nome} • {ev.limite_vagas || 12} vagas</span><div className="admin-actions"><button className="ghost mini" onClick={() => atualizarLimiteEvento(ev.id, ev.limite_vagas)}>Vagas</button><button className="danger mini" onClick={() => fecharEvento(ev.id)}>Fechar</button></div></div>)}
