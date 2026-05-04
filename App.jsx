@@ -405,7 +405,7 @@ export default function App() {
         </section>
 
         {espera.length > 0 && (
-          <section className="card wait"><h2>⏳ Lista de espera</h2><div className="players">{espera.map((p, index) => <div className="player wait-player" key={p.id}><div className="numero">{index + 1}</div><div className="avatar small">{inicial(p.jogador)}</div><span>{p.jogador}</span><span className="status espera">Espera</span></div>)}</div></section>
+          <section className="card wait"><h2>⏳ Lista de espera</h2><div className="players">{espera.map((p, index) => <div className="player wait-player" key={p.id}><div className="numero">{index + 1}</div><div className="avatar small">{inicial(p.jogador)}</div><span>{p.jogador}</span><span className="status espera">Lista de espera</span></div>)}</div></section>
         )}
 
         {duplasPublicas.length > 0 && (
@@ -471,7 +471,7 @@ export default function App() {
               )}
 
               <h3>Pagamentos e lista</h3>
-              {presencas.map((p, index) => <div className="admin-row" key={p.id}><span>{index + 1}. {p.jogador} {p.status === 'espera' ? '• espera' : ''}</span><div className="admin-actions">{p.status === 'espera' ? <button className="paid mini" onClick={() => adminPromover(p)}>Promover</button> : <button className="ghost mini" onClick={() => adminMoverParaEspera(p)}>Espera</button>}<button className={p.pix_pago ? 'paid mini' : 'ghost mini'} onClick={() => adminMarcarPago(p)}>{p.pix_pago ? 'Pago' : 'Pendente'}</button></div></div>)}
+              {presencas.map((p, index) => <div className="admin-row" key={p.id}><span>{index + 1}. {p.jogador} {p.status === 'espera' ? '• espera' : ''}</span><div className="admin-actions">{p.status === 'espera' ? <button className="paid mini" onClick={() => adminPromover(p)}>Promover</button> : <button className="ghost mini" onClick={() => adminMoverParaEspera(p)}>Mover p/ espera</button>}<button className={p.pix_pago ? 'paid mini' : 'ghost mini'} onClick={() => adminMarcarPago(p)}>{p.pix_pago ? 'Pago' : 'Pendente'}</button></div></div>)}
 
               <h3>Sorteio misto</h3>
               <button className="primary" onClick={sortearDuplasAnimado}>🎲 Sortear e publicar duplas</button>
