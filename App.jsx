@@ -338,6 +338,21 @@ export default function App() {
     aviso('Limite atualizado.')
   }
 
+
+  async function alternarChurrasco(evento) {
+    const novoStatus = !evento.churrasco_ativo
+
+    const { error } = await supabase
+      .from('eventos')
+      .update({ churrasco_ativo: novoStatus })
+      .eq('id', evento.id)
+
+    if (error) return aviso('Não consegui alterar o churrasco.')
+
+    await carregarTudo()
+    aviso(novoStatus ? 'Churrasco ativado 🍖' : 'Churrasco ocultado.')
+  }
+
   async function fecharEvento(id) {
     const { error } = await supabase.from('eventos').update({ aberto: false }).eq('id', id)
     if (error) return aviso('Não consegui fechar o evento.')
@@ -456,7 +471,8 @@ export default function App() {
           <section className="card wait"><h2>⏳ Lista de espera</h2><div className="players">{espera.map((p, index) => <div className="player wait-player" key={p.id}><div className="numero">{index + 1}</div><div className="avatar small">{inicial(p.jogador)}</div><span>{p.jogador}</span><span className="status espera">Lista de espera</span></div>)}</div></section>
         )}
 
-        <section className="card churrasco-card">
+        {eventoSelecionado?.churrasco_ativo && (
+          <section className="card churrasco-card">
           <h2>🥩 Churrasco ({listaChurrasco.length})</h2>
           <button className="primary" disabled={!eventoId || !nomeAtual} onClick={() => entrarChurrasco(nomeAtual, 'jogador')}>
             🥩 Quero ir pro churrasco
@@ -476,7 +492,8 @@ export default function App() {
               ))}
             </div>
           )}
-        </section>
+          </section>
+        )}
 
         {duplasPublicas.length > 0 && (
           <section className="card sorteio-publico"><h2>🎲 Duplas sorteadas</h2>{duplasPublicas.map((d, i) => <div className="dupla" key={i}>{i + 1}. {d}</div>)}</section>
@@ -515,6 +532,11 @@ export default function App() {
               )}
 
               <h3>Churrasco</h3>
+              {eventoSelecionado && (
+                <button className={eventoSelecionado.churrasco_ativo ? 'danger' : 'primary'} onClick={() => alternarChurrasco(eventoSelecionado)}>
+                  {eventoSelecionado.churrasco_ativo ? '🥩 Ocultar churrasco' : '🥩 Ativar churrasco'}
+                </button>
+              )}
               <input
                 placeholder="Nome para o churrasco"
                 value={nomeChurrascoAdmin}
