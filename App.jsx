@@ -25,21 +25,6 @@ function formatarData(data) {
   }).replace(',', ' -')
 }
 
-function calcularTempoRestante(dataEvento, agoraBase = new Date()) {
-  if (!dataEvento) return ''
-  const evento = new Date(dataEvento)
-  const diff = evento.getTime() - agoraBase.getTime()
-
-  if (diff <= 0) return 'Já começou 🔥'
-
-  const dias = Math.floor(diff / (1000 * 60 * 60 * 24))
-  const horas = Math.floor((diff / (1000 * 60 * 60)) % 24)
-  const minutos = Math.floor((diff / (1000 * 60)) % 60)
-
-  if (dias > 0) return `Faltam ${dias}d ${horas}h ${minutos}min`
-  return `Faltam ${horas}h ${minutos}min 🔥`
-}
-
 function inicial(nome) {
   return nome ? nome.trim()[0].toUpperCase() : '?'
 }
@@ -76,20 +61,11 @@ export default function App() {
   const [sorteando, setSorteando] = useState(false)
   const [historico, setHistorico] = useState([])
   const [historicoAberto, setHistoricoAberto] = useState(false)
-  const [agora, setAgora] = useState(new Date())
   const [sexoAberto, setSexoAberto] = useState(false)
 
   useEffect(() => { carregarTudo() }, [])
   useEffect(() => { if (eventoId) carregarPresencas(eventoId) }, [eventoId])
   useEffect(() => { if (adminLogado) carregarRankingFrequencia() }, [adminLogado])
-
-  useEffect(() => {
-    const intervalo = setInterval(() => {
-      setAgora(new Date())
-    }, 60000)
-
-    return () => clearInterval(intervalo)
-  }, [])
 
   async function carregarTudo() {
     await carregarJogadores()
@@ -391,11 +367,7 @@ export default function App() {
           )}
           {eventoSelecionado && (
             <div className="event-box">
-              <div>
-                <strong>{eventoSelecionado.nome}</strong>
-                <span>{formatarData(eventoSelecionado.data_evento)}</span>
-                <div className="contador">{calcularTempoRestante(eventoSelecionado.data_evento, agora)}</div>
-              </div>
+              <div><strong>{eventoSelecionado.nome}</strong><span>{formatarData(eventoSelecionado.data_evento)}</span></div>
               <div className="vagas"><strong>{vagasUsadas}/{limiteVagas}</strong><span>{vagasRestantes > 0 ? `faltam ${vagasRestantes} vagas` : `lista cheia • ${espera.length} na espera`}</span></div>
             </div>
           )}
