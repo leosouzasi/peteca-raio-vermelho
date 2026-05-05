@@ -1,7 +1,7 @@
 {
   "name": "peteca-raio-vermelho",
   "private": true,
-  "version": "0.0.8-final-monstra-v3",
+  "version": "0.0.10-churrasco",
   "scripts": {
     "dev": "vite",
     "build": "vite build",

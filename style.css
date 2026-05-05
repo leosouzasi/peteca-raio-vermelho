@@ -3,3 +3,19 @@
 .status.confirmado{background:#1a3a1a;color:#7CFC00;border:1px solid #2ecc71}
 .text-confirmado{color:#7CFC00}
 .text-espera{color:#ffe7a0}
+
+.churrasco-card{
+  border-color:rgba(255,120,0,.65);
+  background:linear-gradient(145deg,#251005,#111);
+}
+.churrasco-player{
+  background:#24180d;
+}
+.status.churrasco{
+  background:#6b3b12;
+  color:#ffd7a0;
+  border:1px solid #c47a2c;
+}
+.churrasco-lista{
+  margin-top:12px;
+}

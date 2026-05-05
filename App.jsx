@@ -61,10 +61,17 @@ export default function App() {
   const [sorteando, setSorteando] = useState(false)
   const [historico, setHistorico] = useState([])
   const [historicoAberto, setHistoricoAberto] = useState(false)
+  const [listaChurrasco, setListaChurrasco] = useState([])
+  const [nomeChurrascoAdmin, setNomeChurrascoAdmin] = useState('')
   const [sexoAberto, setSexoAberto] = useState(false)
 
   useEffect(() => { carregarTudo() }, [])
-  useEffect(() => { if (eventoId) carregarPresencas(eventoId) }, [eventoId])
+  useEffect(() => {
+    if (eventoId) {
+      carregarPresencas(eventoId)
+      carregarChurrasco(eventoId)
+    }
+  }, [eventoId])
   useEffect(() => { if (adminLogado) carregarRankingFrequencia() }, [adminLogado])
 
   async function carregarTudo() {
@@ -119,6 +126,47 @@ export default function App() {
     if (existeLocal) return
     await supabase.from('jogadores').insert([{ nome: limpo, sexo: 'M' }])
     await carregarJogadores()
+  }
+
+
+  async function carregarChurrasco(id = eventoId) {
+    if (!id) return
+    const { data } = await supabase
+      .from('churrasco')
+      .select('*')
+      .eq('evento_id', id)
+      .order('criado_em', { ascending: true })
+
+    setListaChurrasco(data || [])
+  }
+
+  async function entrarChurrasco(nomePessoa = nomeAtual, origem = 'jogador') {
+    const limpo = normalizarNome(nomePessoa)
+    if (!eventoId) return aviso('Escolha uma peteca primeiro.')
+    if (!limpo) return aviso('Escolha ou digite um nome para o churrasco.')
+
+    const jaEsta = listaChurrasco.find(c => c.nome?.toLowerCase() === limpo.toLowerCase())
+    if (jaEsta) return aviso('Esse nome já está no churrasco 🍖')
+
+    const { error } = await supabase.from('churrasco').insert([{
+      evento_id: eventoId,
+      nome: limpo,
+      origem
+    }])
+
+    if (error) return aviso('Não consegui adicionar no churrasco.')
+
+    setNomeChurrascoAdmin('')
+    await carregarChurrasco(eventoId)
+    aviso('Nome adicionado no churrasco 🍖')
+  }
+
+  async function removerChurrasco(id) {
+    const { error } = await supabase.from('churrasco').delete().eq('id', id)
+    if (error) return aviso('Não consegui remover do churrasco.')
+
+    await carregarChurrasco(eventoId)
+    aviso('Removido do churrasco.')
   }
 
   async function carregarPresencas(id) {
@@ -408,6 +456,28 @@ export default function App() {
           <section className="card wait"><h2>⏳ Lista de espera</h2><div className="players">{espera.map((p, index) => <div className="player wait-player" key={p.id}><div className="numero">{index + 1}</div><div className="avatar small">{inicial(p.jogador)}</div><span>{p.jogador}</span><span className="status espera">Lista de espera</span></div>)}</div></section>
         )}
 
+        <section className="card churrasco-card">
+          <h2>🥩 Churrasco ({listaChurrasco.length})</h2>
+          <button className="primary" disabled={!eventoId || !nomeAtual} onClick={() => entrarChurrasco(nomeAtual, 'jogador')}>
+            🥩 Quero ir pro churrasco
+          </button>
+
+          {listaChurrasco.length === 0 ? (
+            <p className="muted">Ninguém entrou no churrasco ainda.</p>
+          ) : (
+            <div className="players churrasco-lista">
+              {listaChurrasco.map((c, index) => (
+                <div className="player churrasco-player" key={c.id}>
+                  <div className="numero">{index + 1}</div>
+                  <div className="avatar small">{inicial(c.nome)}</div>
+                  <span>{c.nome}</span>
+                  <span className="status churrasco">Churrasco</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
         {duplasPublicas.length > 0 && (
           <section className="card sorteio-publico"><h2>🎲 Duplas sorteadas</h2>{duplasPublicas.map((d, i) => <div className="dupla" key={i}>{i + 1}. {d}</div>)}</section>
         )}
@@ -442,6 +512,27 @@ export default function App() {
                     </div>
                   ))}
                 </>
+              )}
+
+              <h3>Churrasco</h3>
+              <input
+                placeholder="Nome para o churrasco"
+                value={nomeChurrascoAdmin}
+                onChange={e => setNomeChurrascoAdmin(e.target.value)}
+              />
+              <button className="primary" onClick={() => entrarChurrasco(nomeChurrascoAdmin, 'admin')}>
+                🥩 Adicionar no churrasco
+              </button>
+
+              {listaChurrasco.length === 0 ? (
+                <p className="muted">Nenhum nome no churrasco.</p>
+              ) : (
+                listaChurrasco.map((c, index) => (
+                  <div className="admin-row" key={c.id}>
+                    <span>{index + 1}. {c.nome}</span>
+                    <button className="danger mini" onClick={() => removerChurrasco(c.id)}>Remover</button>
+                  </div>
+                ))
               )}
 
               <h3>Eventos abertos</h3>
