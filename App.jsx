@@ -108,13 +108,13 @@ export default function App() {
   }
 
   async function carregarJogadores() {
-    const { data, error } = await supabase.from('jogadores').select('id,nome,sexo').order('nome', { ascending: true })
+    const { data, error } = await supabase.from('jogadores').select('id,nome,sexo,nivel').order('nome', { ascending: true })
     if (error || !data || data.length === 0) {
-      setJogadores(jogadoresPadrao.map(nome => ({ nome, sexo: 'M' })))
+      setJogadores(jogadoresPadrao.map(nome => ({ nome, sexo: 'M', nivel: 'Intermediário' })))
       return
     }
     const nomesBanco = data.map(j => j.nome).filter(Boolean)
-    const faltantes = jogadoresPadrao.filter(p => !nomesBanco.some(n => n.toLowerCase() === p.toLowerCase())).map(nome => ({ nome, sexo: 'M' }))
+    const faltantes = jogadoresPadrao.filter(p => !nomesBanco.some(n => n.toLowerCase() === p.toLowerCase())).map(nome => ({ nome, sexo: 'M', nivel: 'Intermediário' }))
     const todos = [...data, ...faltantes].sort((a,b) => a.nome.localeCompare(b.nome))
     setJogadores(todos)
   }
@@ -124,7 +124,7 @@ export default function App() {
     if (!limpo) return
     const existeLocal = jogadores.some(j => j.nome.toLowerCase() === limpo.toLowerCase())
     if (existeLocal) return
-    await supabase.from('jogadores').insert([{ nome: limpo, sexo: 'M' }])
+    await supabase.from('jogadores').insert([{ nome: limpo, sexo: 'M', nivel: 'Intermediário' }])
     await carregarJogadores()
   }
 
@@ -198,6 +198,85 @@ export default function App() {
   function sexoDoJogador(nomeJogador) {
     const j = jogadores.find(x => x.nome?.toLowerCase() === nomeJogador?.toLowerCase())
     return j?.sexo || 'M'
+  }
+
+  function nivelDoJogador(nomeJogador) {
+    const j = jogadores.find(x => x.nome?.toLowerCase() === nomeJogador?.toLowerCase())
+    return j?.nivel || 'Intermediário'
+  }
+
+  function pontosNivel(nivel) {
+    if (nivel === 'Avançado') return 3
+    if (nivel === 'Iniciante') return 1
+    return 2
+  }
+
+  function criarJogadorSorteio(nome) {
+    const nivel = nivelDoJogador(nome)
+    return {
+      nome,
+      sexo: sexoDoJogador(nome),
+      nivel,
+      pontos: pontosNivel(nivel)
+    }
+  }
+
+  function montarDuplasBalanceadas(nomesConfirmados) {
+    const todos = nomesConfirmados.map(criarJogadorSorteio)
+
+    let mulheres = embaralhar(todos.filter(j => j.sexo === 'F')).sort((a, b) => b.pontos - a.pontos)
+    let homens = embaralhar(todos.filter(j => j.sexo === 'M')).sort((a, b) => a.pontos - b.pontos)
+    const duplas = []
+
+    while (mulheres.length > 0 && homens.length > 0) {
+      const mulher = mulheres.shift()
+      let melhorIndice = 0
+      let melhorScore = Infinity
+
+      homens.forEach((homem, index) => {
+        const soma = mulher.pontos + homem.pontos
+        const penalidadeForteForte = mulher.pontos === 3 && homem.pontos === 3 ? 10 : 0
+        const score = Math.abs(soma - 4) + penalidadeForteForte
+
+        if (score < melhorScore) {
+          melhorScore = score
+          melhorIndice = index
+        }
+      })
+
+      const homem = homens.splice(melhorIndice, 1)[0]
+      duplas.push([mulher, homem])
+    }
+
+    let restantes = embaralhar([...mulheres, ...homens]).sort((a, b) => b.pontos - a.pontos)
+
+    while (restantes.length > 0) {
+      const primeiro = restantes.shift()
+
+      if (restantes.length === 0) {
+        duplas.push([primeiro, { nome: 'Reserva', nivel: '', pontos: 0, sexo: '' }])
+        break
+      }
+
+      let melhorIndice = 0
+      let melhorScore = Infinity
+
+      restantes.forEach((segundo, index) => {
+        const soma = primeiro.pontos + segundo.pontos
+        const penalidadeForteForte = primeiro.pontos === 3 && segundo.pontos === 3 ? 10 : 0
+        const score = Math.abs(soma - 4) + penalidadeForteForte
+
+        if (score < melhorScore) {
+          melhorScore = score
+          melhorIndice = index
+        }
+      })
+
+      const segundo = restantes.splice(melhorIndice, 1)[0]
+      duplas.push([primeiro, segundo])
+    }
+
+    return duplas.map(([a, b]) => `${a.nome} + ${b.nome}`)
   }
 
   async function inserirNaLista(nomeFinal, origemAdmin = false) {
@@ -378,6 +457,11 @@ export default function App() {
     await carregarJogadores()
   }
 
+  async function atualizarNivel(jogador, nivel) {
+    await supabase.from('jogadores').update({ nivel }).eq('nome', jogador.nome)
+    await carregarJogadores()
+  }
+
   async function sortearDuplasAnimado() {
     const nomesConfirmados = confirmados.map(p => p.jogador)
     if (nomesConfirmados.length < 2) return aviso('Precisa de pelo menos 2 confirmados.')
@@ -386,18 +470,7 @@ export default function App() {
     setDuplas([])
 
     setTimeout(async () => {
-      let homens = embaralhar(nomesConfirmados.filter(n => sexoDoJogador(n) === 'M'))
-      let mulheres = embaralhar(nomesConfirmados.filter(n => sexoDoJogador(n) === 'F'))
-      const resultado = []
-
-      while (homens.length > 0 && mulheres.length > 0) {
-        resultado.push(`${mulheres.shift()} + ${homens.shift()}`)
-      }
-
-      const restantes = embaralhar([...mulheres, ...homens])
-      while (restantes.length > 0) {
-        resultado.push(`${restantes.shift()} + ${restantes.shift() || 'Reserva'}`)
-      }
+      const resultado = montarDuplasBalanceadas(nomesConfirmados)
 
       setDuplas(resultado)
       setSorteando(false)
@@ -513,19 +586,26 @@ export default function App() {
               <button className="primary" onClick={() => inserirNaLista(adminNomeManual || adminNome, true)}>Adicionar jogador</button>
 
               <button className="ghost" onClick={() => setSexoAberto(!sexoAberto)}>
-                {sexoAberto ? 'Ocultar sexo dos jogadores' : '👥 Definir sexo dos jogadores'}
+                {sexoAberto ? 'Ocultar sexo e nível dos jogadores' : '👥 Definir sexo e nível dos jogadores'}
               </button>
 
               {sexoAberto && (
                 <>
-                  <h3>Definir sexo para sorteio misto</h3>
+                  <h3>Definir sexo e nível para sorteio</h3>
                   {jogadores.map(j => (
-                    <div className="admin-row" key={j.nome}>
+                    <div className="admin-row nivel-row" key={j.nome}>
                       <span>{j.nome}</span>
-                      <select className="sexo-select" value={j.sexo || 'M'} onChange={e => atualizarSexo(j, e.target.value)}>
-                        <option value="M">Masculino</option>
-                        <option value="F">Feminino</option>
-                      </select>
+                      <div className="nivel-controls">
+                        <select className="sexo-select" value={j.sexo || 'M'} onChange={e => atualizarSexo(j, e.target.value)}>
+                          <option value="M">Masculino</option>
+                          <option value="F">Feminino</option>
+                        </select>
+                        <select className="nivel-select" value={j.nivel || 'Intermediário'} onChange={e => atualizarNivel(j, e.target.value)}>
+                          <option value="Avançado">Avançado</option>
+                          <option value="Intermediário">Intermediário</option>
+                          <option value="Iniciante">Iniciante</option>
+                        </select>
+                      </div>
                     </div>
                   ))}
                 </>

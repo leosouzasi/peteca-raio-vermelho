@@ -19,3 +19,26 @@
 .churrasco-lista{
   margin-top:12px;
 }
+
+
+.nivel-controls{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+}
+.nivel-select{
+  max-width:170px;
+  padding:8px;
+  font-size:13px;
+}
+.nivel-row span{
+  font-weight:800;
+}
+@media(max-width:420px){
+  .nivel-controls{
+    width:100%;
+  }
+  .nivel-select{
+    max-width:100%;
+  }
+}
