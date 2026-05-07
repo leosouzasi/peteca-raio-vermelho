@@ -225,65 +225,102 @@ export default function App() {
     const todos = nomesConfirmados.map(criarJogadorSorteio)
     const duplas = []
 
-    const escolherMelhorParceiro = (principal, candidatos) => {
+    let mulheres = embaralhar(
+      todos.filter(j => j.sexo === 'F')
+    ).sort((a, b) => a.pontos - b.pontos)
+
+    let homens = embaralhar(
+      todos.filter(j => j.sexo === 'M')
+    ).sort((a, b) => b.pontos - a.pontos)
+
+    const escolherParceiroBalanceado = (principal, candidatos) => {
       if (candidatos.length === 0) return -1
 
-      // Regra dura: se principal for avançado, primeiro procura alguém que NÃO seja avançado.
-      const candidatosPermitidos = principal.pontos === 3
-        ? candidatos.filter(c => c.pontos !== 3)
-        : candidatos
+      // Se principal é avançado, evita avançado+avançado.
+      let filtrados = candidatos
 
-      const listaAnalise = candidatosPermitidos.length > 0 ? candidatosPermitidos : candidatos
+      if (principal.pontos === 3) {
+        const naoAvancados = candidatos.filter(c => c.pontos !== 3)
+        if (naoAvancados.length > 0) {
+          filtrados = naoAvancados
+        }
+      }
 
-      let melhorOriginalIndex = 0
+      let melhorIndexOriginal = 0
       let melhorScore = Infinity
 
-      listaAnalise.forEach(candidato => {
-        const originalIndex = candidatos.findIndex(c => c.nome === candidato.nome)
+      filtrados.forEach(candidato => {
+        const idxOriginal = candidatos.findIndex(c => c.nome === candidato.nome)
+
+        let score = 0
         const soma = principal.pontos + candidato.pontos
 
-        // Melhor alvo: soma 4 ou 5. Ex: avançado+iniciante ou intermediário+intermediário.
-        let score = Math.abs(soma - 4)
+        // Melhor alvo: soma 4
+        score += Math.abs(soma - 4)
 
-        // Penaliza muito avançado+avançado.
-        if (principal.pontos === 3 && candidato.pontos === 3) score += 100
+        // Forte+forte quase proibido
+        if (principal.pontos === 3 && candidato.pontos === 3) score += 1000
 
-        // Penaliza iniciante+iniciante também, mas menos.
-        if (principal.pontos === 1 && candidato.pontos === 1) score += 8
+        // Fraco+fraco ruim também
+        if (principal.pontos === 1 && candidato.pontos === 1) score += 20
 
         if (score < melhorScore) {
           melhorScore = score
-          melhorOriginalIndex = originalIndex
+          melhorIndexOriginal = idxOriginal
         }
       })
 
-      return melhorOriginalIndex
+      return melhorIndexOriginal
     }
 
-    // 1) Prioriza mulheres, tentando parear cada mulher com homem mais equilibrado.
-    let mulheres = embaralhar(todos.filter(j => j.sexo === 'F')).sort((a, b) => b.pontos - a.pontos)
-    let homens = embaralhar(todos.filter(j => j.sexo === 'M')).sort((a, b) => a.pontos - b.pontos)
+    // REGRA 1:
+    // Homem avançado + feminino
+    let avancados = homens.filter(h => h.pontos === 3)
+    homens = homens.filter(h => h.pontos !== 3)
 
+    while (avancados.length > 0 && mulheres.length > 0) {
+      const homem = avancados.shift()
+
+      // Prefere mulher não avançada
+      let indiceMulher = mulheres.findIndex(m => m.pontos !== 3)
+      if (indiceMulher === -1) indiceMulher = 0
+
+      const mulher = mulheres.splice(indiceMulher, 1)[0]
+      duplas.push([homem, mulher])
+    }
+
+    // devolve avançados restantes
+    homens = [...avancados, ...homens]
+
+    // REGRA 2:
+    // Mulher + homem
     while (mulheres.length > 0 && homens.length > 0) {
       const mulher = mulheres.shift()
-      const idx = escolherMelhorParceiro(mulher, homens)
+      const idx = escolherParceiroBalanceado(mulher, homens)
       const homem = homens.splice(idx, 1)[0]
+
       duplas.push([mulher, homem])
     }
 
-    // 2) Restantes: sempre pega o mais forte e procura um parceiro mais fraco possível.
-    let restantes = [...mulheres, ...homens].sort((a, b) => b.pontos - a.pontos)
+    // REGRA 3:
+    // Balancear restantes
+    let restantes = [...mulheres, ...homens]
+      .sort((a, b) => b.pontos - a.pontos)
 
     while (restantes.length > 0) {
       const principal = restantes.shift()
 
       if (restantes.length === 0) {
-        duplas.push([principal, { nome: 'Reserva', nivel: '', pontos: 0, sexo: '' }])
+        duplas.push([
+          principal,
+          { nome: 'Reserva', pontos: 0, sexo: '', nivel: '' }
+        ])
         break
       }
 
-      const idx = escolherMelhorParceiro(principal, restantes)
+      const idx = escolherParceiroBalanceado(principal, restantes)
       const parceiro = restantes.splice(idx, 1)[0]
+
       duplas.push([principal, parceiro])
     }
 
