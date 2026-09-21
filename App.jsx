@@ -519,6 +519,60 @@ export default function App() {
     await carregarJogadores()
   }
 
+  async function excluirJogador(jogador) {
+    if (!jogador?.id) return aviso('Não foi possível excluir este jogador.')
+
+    const confirmar = window.confirm(
+      `Excluir o cadastro de ${jogador.nome}?\n\n` +
+      'Isso remove o jogador da tabela de cadastros. O histórico das presenças é mantido.'
+    )
+
+    if (!confirmar) return
+
+    const { error } = await supabase
+      .from('jogadores')
+      .delete()
+      .eq('id', jogador.id)
+
+    if (error) return aviso('Não consegui excluir o cadastro do jogador.')
+
+    if (nome?.toLowerCase() === jogador.nome?.toLowerCase()) {
+      localStorage.removeItem('peteca_nome')
+      setNome('')
+      setNomeManual('')
+      setModoOutroNome(false)
+    }
+
+    await carregarJogadores()
+    aviso(`${jogador.nome} foi excluído do cadastro.`)
+  }
+
+  async function removerDaLista(p) {
+    if (!p?.id) return aviso('Não foi possível remover este nome da lista.')
+
+    const confirmar = window.confirm(`Remover ${p.jogador} da lista desta peteca?`)
+    if (!confirmar) return
+
+    setCarregando(true)
+    const { error } = await supabase
+      .from('presencas')
+      .delete()
+      .eq('id', p.id)
+    setCarregando(false)
+
+    if (error) return aviso('Não consegui remover o nome da lista.')
+
+    await carregarPresencas(eventoId)
+    await carregarRankingFrequencia()
+
+    // Se saiu um confirmado, libera a vaga para o primeiro da espera.
+    if (p.status !== 'espera') {
+      await promoverPrimeiroDaEspera()
+    }
+
+    aviso(`${p.jogador} foi removido da lista.`)
+  }
+
   async function sortearDuplasAnimado() {
     const nomesConfirmados = confirmados.map(p => p.jogador)
     if (nomesConfirmados.length < 2) return aviso('Precisa de pelo menos 2 confirmados.')
@@ -662,6 +716,13 @@ export default function App() {
                           <option value="Intermediário">Intermediário</option>
                           <option value="Iniciante">Iniciante</option>
                         </select>
+                        <button
+                          className="danger mini"
+                          disabled={!j.id}
+                          onClick={() => excluirJogador(j)}
+                        >
+                          Excluir cadastro
+                        </button>
                       </div>
                     </div>
                   ))}
@@ -721,7 +782,24 @@ export default function App() {
               )}
 
               <h3>Pagamentos e lista</h3>
-              {presencas.map((p, index) => <div className="admin-row" key={p.id}><span>{index + 1}. {p.jogador} {p.status === 'espera' ? '• espera' : ''}</span><div className="admin-actions">{p.status === 'espera' ? <button className="paid mini" onClick={() => adminPromover(p)}>Promover</button> : <button className="ghost mini" onClick={() => adminMoverParaEspera(p)}>Mover p/ espera</button>}<button className={p.pix_pago ? 'paid mini' : 'ghost mini'} onClick={() => adminMarcarPago(p)}>{p.pix_pago ? 'Pago' : 'Pendente'}</button></div></div>)}
+              {presencas.map((p, index) => (
+                <div className="admin-row" key={p.id}>
+                  <span>{index + 1}. {p.jogador} {p.status === 'espera' ? '• espera' : ''}</span>
+                  <div className="admin-actions">
+                    {p.status === 'espera' ? (
+                      <button className="paid mini" onClick={() => adminPromover(p)}>Promover</button>
+                    ) : (
+                      <button className="ghost mini" onClick={() => adminMoverParaEspera(p)}>Mover p/ espera</button>
+                    )}
+                    <button className={p.pix_pago ? 'paid mini' : 'ghost mini'} onClick={() => adminMarcarPago(p)}>
+                      {p.pix_pago ? 'Pago' : 'Pendente'}
+                    </button>
+                    <button className="danger mini" onClick={() => removerDaLista(p)}>
+                      Remover da lista
+                    </button>
+                  </div>
+                </div>
+              ))}
 
               <h3>Sorteio misto</h3>
               <button className="primary" onClick={sortearDuplasAnimado}>🎲 Sortear e publicar duplas</button>
