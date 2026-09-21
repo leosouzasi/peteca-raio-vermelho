@@ -172,10 +172,13 @@ export default function App() {
   async function carregarPresencas(id) {
     const { data } = await supabase.from('presencas').select('*').eq('evento_id', id)
     const lista = (data || []).sort((a, b) => {
+      // Confirmados primeiro, depois a lista de espera
       const sa = a.status === 'espera' ? 1 : 0
       const sb = b.status === 'espera' ? 1 : 0
       if (sa !== sb) return sa - sb
-      return a.jogador.localeCompare(b.jogador)
+
+      // Dentro de cada lista, quem entrou primeiro fica primeiro
+      return new Date(a.data_jogo) - new Date(b.data_jogo)
     })
     setPresencas(lista)
   }
@@ -348,7 +351,13 @@ export default function App() {
     setCarregando(true)
     await salvarJogadorSeNovo(limpo)
 
-    const { error } = await supabase.from('presencas').insert([{ jogador: limpo, evento_id: eventoId, pix_pago: false, status }])
+    const { error } = await supabase.from('presencas').insert([{
+      jogador: limpo,
+      evento_id: eventoId,
+      pix_pago: false,
+      status,
+      data_jogo: new Date().toISOString()
+    }])
     setCarregando(false)
 
     if (error) return aviso('Não consegui colocar o nome na lista.')
